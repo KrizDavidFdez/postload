@@ -1,0 +1,90 @@
+const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
+const formidable = require('formidable');
+
+// Inicialización del servidor
+const app = express();
+const port = 3000;
+
+// Función para overlay circular con ImageMagick
+function overlayCircularImage(backgroundPath, overlayPath, outputPath, callback) {
+  const tempCircleLogoPath = 'circle_logo.png';
+  const tempMaskPath = 'mask.png';
+  
+  // Crear la máscara circular
+  exec(`convert -size 370x370 xc:none -fill white -draw "circle 185,185 185,1" ${tempMaskPath}`, (err, stdout, stderr) => {
+    if (err) {
+      console.error('Error creando la máscara circular:', stderr);
+      return callback(err);
+    }
+    // Aplicar la máscara al logo
+    exec(`convert ${overlayPath} -resize 370x370^ -gravity center -extent 370x370 ${tempMaskPath} -alpha Off -compose CopyOpacity -composite ${tempCircleLogoPath}`, (err, stdout, stderr) => {
+      if (err) {
+        return callback(err);
+      }
+      // Superponer el logo circular sobre el fondo
+      exec(`convert ${backgroundPath} ${tempCircleLogoPath} -geometry +173+30 -composite ${outputPath}`, (err, stdout, stderr) => {
+        if (err) {
+          return callback(err);
+        }
+        // Limpiar los archivos temporales
+        fs.unlinkSync(tempMaskPath);
+        fs.unlinkSync(tempCircleLogoPath);
+        callback(null, outputPath);
+      });
+    });
+  });
+}
+
+// API para subir imágenes y procesarlas
+app.post('/upload', (req, res) => {
+  const form = new formidable.IncomingForm();
+  form.uploadDir = path.join(__dirname, 'uploads');
+  form.keepExtensions = true;
+
+  form.parse(req, (err, fields, files) => {
+    if (err) {
+      return res.status(500).json({ error: 'Hubo un error al procesar las imágenes.' });
+    }
+
+    const backgroundFile = files.background[0];
+    const overlayFile = files.overlay[0];
+
+    if (!backgroundFile || !overlayFile) {
+      return res.status(400).json({ error: 'Faltan imágenes para procesar.' });
+    }
+
+    // Rutas de los archivos subidos
+    const backgroundPath = backgroundFile.filepath;
+    const overlayPath = overlayFile.filepath;
+    
+    // Ruta para la imagen procesada
+    const outputPath = path.join(__dirname, 'resultado.jpg');
+
+    // Llamar a la función de overlay
+    overlayCircularImage(backgroundPath, overlayPath, outputPath, (err, resultPath) => {
+      if (err) {
+        return res.status(500).json({ error: 'Hubo un error al procesar las imágenes.' });
+      }
+
+      // Leer la imagen procesada y convertirla a Base64
+      const resultBuffer = fs.readFileSync(resultPath);
+      const base64Image = resultBuffer.toString('base64');
+
+      // Enviar la imagen en Base64 como respuesta
+      res.json({ imageBase64: `data:image/jpeg;base64,${base64Image}` });
+
+      // Eliminar archivos temporales
+      fs.unlinkSync(backgroundPath);
+      fs.unlinkSync(overlayPath);
+      fs.unlinkSync(resultPath);
+    });
+  });
+});
+
+// Iniciar el servidor
+app.listen(port, () => {
+  console.log(`Servidor corriendo en http://localhost:${port}`);
+});

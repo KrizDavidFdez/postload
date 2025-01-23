@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Subir Logo</title>
+</head>
+<body>
+  <h1>Sube tu Logo</h1>
+  <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+    <label for="logo">Logo (Imagen del logo):</label>
+    <input type="file" name="logo" id="logo" required><br><br>
+
+    <button type="submit">Subir y Procesar</button>
+  </form>
+
+  <h2>Resultado:</h2>
+  <img id="resultImage" src="" alt="Resultado procesado" style="max-width: 100%;"><br>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      const formData = new FormData(form);
+      const reader = new FileReader();
+      reader.onload = function() {
+        const base64Logo = reader.result.split(',')[1];
+        fetch('/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ logo: base64Logo }),
+        })
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('resultImage').src = data.imageBase64;
+        })
+        .catch(error => {
+          console.error('Error:', error);
+        });
+      };
+      reader.readAsDataURL(form.logo.files[0]);
+    });
+  </script>
+</body>
+</html>
